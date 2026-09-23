@@ -236,9 +236,28 @@ module ArJdbc
         # JDBC driver returns timestamps based on the session time zone set in
         # #configure_connection. So if ActiveRecord.default_timezone changes at
         # runtime we just re-run #configure_connection to apply the new zone.
-        if @default_timezone != ActiveRecord.default_timezone
+        #
+        # Comparing only the :utc/:local symbol isn't enough: when
+        # default_timezone stays :local across two callers that each expect a
+        # *different* concrete zone (e.g. two tests each wrapping their body in
+        # with_system_tz with a different zone name, both using
+        # default_timezone: :local), the symbol never changes so this would
+        # otherwise skip re-running #configure_connection and leave the
+        # session pinned to whichever zone happened to be current the first
+        # time. So also track the resolved zone name and reconfigure if it
+        # moved even when the symbol didn't.
+        current_local_tz = ActiveRecord.default_timezone == :local ? local_tz : nil
+        if @default_timezone != ActiveRecord.default_timezone || @configured_local_tz != current_local_tz
           @default_timezone = ActiveRecord.default_timezone
-          configure_connection if @raw_connection
+          if @raw_connection
+            # Set *before* calling #configure_connection: it issues SET/SHOW
+            # statements of its own, which re-enter #internal_exec_query and
+            # thus this method; recording the new target first makes that
+            # reentrant check see nothing has changed and avoids infinite
+            # recursion (a stack overflow) instead of re-triggering itself.
+            @configured_local_tz = current_local_tz
+            configure_connection
+          end
         end
       end
 

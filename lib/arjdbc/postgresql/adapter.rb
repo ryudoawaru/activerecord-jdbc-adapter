@@ -561,6 +561,17 @@ module ArJdbc
       execute(combine_multi_statements(statements), name)
     end
 
+    # ArJdbc::Abstract::DatabaseStatements#internal_exec_query (the one
+    # actually used for every ActiveRecord-issued query, unlike the
+    # execute_and_clear/exec_no_cache/exec_cache trio below which only run
+    # for #execute) never went through #update_typemap_for_default_timezone,
+    # so a runtime change of ActiveRecord.default_timezone was silently
+    # ignored until the *next* process/connection restart.
+    def internal_exec_query(...)
+      update_typemap_for_default_timezone
+      super
+    end
+
     # from ActiveRecord::ConnectionAdapters::PostgreSQL::DatabaseStatements
     READ_QUERY = ActiveRecord::ConnectionAdapters::AbstractAdapter.build_read_query_regexp(
       :close, :declare, :fetch, :move, :set, :show
@@ -882,7 +893,17 @@ module ArJdbc
     end
 
     def local_tz
-      @local_tz ||= execute('SHOW TIME ZONE', 'SCHEMA').first["TimeZone"]
+      # NOTE: intentionally not memoized (unlike a straight port of Rails'
+      # historical helper of the same name would be): #configure_connection
+      # re-runs this whenever ActiveRecord.default_timezone flips away from
+      # :utc (see #update_typemap_for_default_timezone), and callers such as
+      # tests using with_system_tz/with_env_tz expect that switch to pick up
+      # whatever the process's *current* local zone is, not whatever
+      # Postgres's session happened to report the very first time this ran.
+      # Java's default TimeZone tracks ENV['TZ'] (see JRuby's ENV['TZ']=
+      # hook), so prefer it; only fall back to asking Postgres if that's
+      # somehow unavailable.
+      java.util.TimeZone.getDefault.getID || execute('SHOW TIME ZONE', 'SCHEMA').first["TimeZone"]
     end
 
     def bind_params_length

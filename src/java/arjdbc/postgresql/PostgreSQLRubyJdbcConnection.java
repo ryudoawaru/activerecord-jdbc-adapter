@@ -369,8 +369,12 @@ public class PostgreSQLRubyJdbcConnection extends arjdbc.jdbc.RubyJdbcConnection
         final Connection connection, final PreparedStatement statement,
         final int index, IRubyObject value,
         final IRubyObject attribute, final int type) throws SQLException {
-        // PGJDBC uses strings internally anyway, so using Timestamp doesn't do any good
-        String tsString = PgDateTimeUtils.timestampValueToString(context, value, null, true);
+        // PGJDBC uses strings internally anyway, so using Timestamp doesn't do any good.
+        // Must use the connection's configured default time zone (like the date/time/
+        // datetime parsers above do) rather than null, otherwise a bound timestamp is
+        // serialized without any zone offset and the server applies its own session
+        // zone, which silently shifts the value when default_timezone == :local.
+        String tsString = PgDateTimeUtils.timestampValueToString(context, value, getDefaultTimeZone(context), true);
         statement.setObject(index, tsString, Types.OTHER);
     }
 
