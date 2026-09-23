@@ -105,5 +105,9 @@ group :rails do
     gem 'minitest-rg', require: nil
     gem 'minitest-rails', require: nil
     gem 'benchmark-ips', require: nil
+    # Pin to work around JRuby native compilation issues with newer rdoc
+    # when building the gem's rdoc_options in the gemspec. Revisit/drop once
+    # JRuby >= 10 + rdoc >= 8 is confirmed to build cleanly again.
+    gem 'rdoc', '~> 7', require: false
   end
 end

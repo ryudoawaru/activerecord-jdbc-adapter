@@ -1,6 +1,11 @@
 # -*- encoding : utf-8 -*-
 require 'test_helper'
 
+# Test-only compat patch (see file for rationale); loaded here rather than
+# from any production adapter, since it only monkeypatches
+# ActiveSupport::LogSubscriber::TestHelper::MockLogger.
+require 'arjdbc/abstract/mock_logger_jruby_compat_monkey_patch'
+
 require 'models/data_types'
 require 'models/entry'
 require 'models/auto_id'
