@@ -104,6 +104,13 @@ encounter problems, try adding this to your database configuration:
 The correct timezone depends on the system setup, but the one shown is a good
 place to start and is actually the correct setting for many systems.
 
+#### PostgreSQL specific notes
+
+PostgreSQL connection/resilience options (timeouts, TCP keep-alive,
+prepared-statement tuning) and guidance for running behind PgBouncer
+(including transaction/statement pooling mode) are documented in the
+[activerecord-jdbcpostgresql-adapter README](activerecord-jdbcpostgresql-adapter/README.md).
+
 
 ### Standalone with ActiveRecord
 

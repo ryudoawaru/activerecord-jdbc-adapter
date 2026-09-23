@@ -34,13 +34,16 @@ module ArJdbc
         binds = convert_legacy_binds_to_attributes(binds) if binds.first.is_a?(Array)
 
         with_raw_connection do |conn|
-          if without_prepared_statement?(binds)
-            log(sql, name) { conn.execute_insert_pk(sql, pk) }
-          else
-            log(sql, name, binds) do
-              conn.execute_insert_pk(sql, binds, pk)
+          result =
+            if without_prepared_statement?(binds)
+              log(sql, name) { conn.execute_insert_pk(sql, pk) }
+            else
+              log(sql, name, binds) do
+                conn.execute_insert_pk(sql, binds, pk)
+              end
             end
-          end
+          handle_warnings(sql)
+          result
         end
       end
 
@@ -56,15 +59,18 @@ module ArJdbc
         binds = convert_legacy_binds_to_attributes(binds) if binds.first.is_a?(Array)
 
         with_raw_connection do |conn|
-          if without_prepared_statement?(binds)
-            log(sql, name, async: async) { conn.execute_query(sql) }
-          else
-            log(sql, name, binds, async: async) do
-              # this is different from normal AR that always caches
-              cached_statement = fetch_cached_statement(sql) if prepare && @jdbc_statement_cache_enabled
-              conn.execute_prepared_query(sql, binds, cached_statement)
+          result =
+            if without_prepared_statement?(binds)
+              log(sql, name, async: async) { conn.execute_query(sql) }
+            else
+              log(sql, name, binds, async: async) do
+                # this is different from normal AR that always caches
+                cached_statement = fetch_cached_statement(sql) if prepare && @jdbc_statement_cache_enabled
+                conn.execute_prepared_query(sql, binds, cached_statement)
+              end
             end
-          end
+          handle_warnings(sql)
+          result
         end
       end
 
@@ -78,11 +84,14 @@ module ArJdbc
         binds = convert_legacy_binds_to_attributes(binds) if binds.first.is_a?(Array)
 
         with_raw_connection do |conn|
-          if without_prepared_statement?(binds)
-            log(sql, name) { conn.execute_update(sql) }
-          else
-            log(sql, name, binds) { conn.execute_prepared_update(sql, binds) }
-          end
+          result =
+            if without_prepared_statement?(binds)
+              log(sql, name) { conn.execute_update(sql) }
+            else
+              log(sql, name, binds) { conn.execute_prepared_update(sql, binds) }
+            end
+          handle_warnings(sql)
+          result
         end
       end
       alias :exec_delete :exec_update
@@ -105,10 +114,17 @@ module ArJdbc
         end
       end
 
-      def preprocess_query(sql)
-        check_if_write_query(sql) if respond_to?(:check_if_write_query, true)
-        mark_transaction_written_if_write(sql) if respond_to?(:mark_transaction_written_if_write, true)
-        sql
+      # AR >= 8.1 removed these helpers, folding them into #preprocess_query via
+      # the primitives #write_query?, #ensure_writes_are_allowed and
+      # #mark_transaction_written. The JDBC adapters' custom query paths
+      # (e.g. #exec_insert, #execute_and_clear) still call them, so reintroduce
+      # them here on top of those primitives.
+      def mark_transaction_written_if_write(sql)
+        mark_transaction_written if write_query?(sql)
+      end
+
+      def check_if_write_query(sql)
+        ensure_writes_are_allowed(sql) if write_query?(sql)
       end
 
       def raw_execute(sql, name, binds = [], prepare: false, async: false, allow_retry: false, materialize_transactions: true, batch: false)
@@ -116,9 +132,17 @@ module ArJdbc
           with_raw_connection(allow_retry: allow_retry, materialize_transactions: materialize_transactions) do |conn|
             result = conn.execute(sql)
             verified!
+            handle_warnings(sql)
             result
           end
         end
+      end
+
+      # Drains and dispatches any SQL warnings collected during the last
+      # execution. No-op by default; adapters that surface DB warnings (e.g.
+      # PostgreSQL) override this. Mirrors AbstractAdapter#handle_warnings, which
+      # the JDBC query paths bypass since they don't route through #raw_execute.
+      def handle_warnings(sql)
       end
 
     end
