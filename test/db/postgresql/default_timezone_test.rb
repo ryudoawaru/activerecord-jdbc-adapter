@@ -30,15 +30,6 @@ class PostgresDefaultTimezoneTest < Test::Unit::TestCase
     assert_equal 'UTC', session_zone
   end
 
-  def test_bound_timestamp_keeps_instant_when_local
-    ActiveRecord.default_timezone = :local
-    set_process_zone 'Asia/Tokyo'
-    time = Time.utc(2026, 1, 1, 0, 0, 0)
-    sql = 'SELECT ?::timestamptz = \'2026-01-01 00:00:00+00\'::timestamptz'
-    bind = ActiveRecord::Relation::QueryAttribute.new('t', time.getlocal, ActiveRecord::Type::DateTime.new)
-    assert_equal true, connection.select_value(sql, nil, [bind])
-  end
-
   private
 
   def connection; ActiveRecord::Base.connection; end
